@@ -1,385 +1,641 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>SMTA Signal Engine</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap" rel="stylesheet">
   <style>
-    :root{
-      --bg1:#f6f7ff;
-      --bg2:#fff5f2;
-      --card:#ffffff;
-      --ink:#101223;
-      --muted:#5b637a;
-      --border:rgba(16,18,35,.12);
-      --shadow:0 12px 30px rgba(16,18,35,.10);
-      --brand1:#5b6cff;
-      --brand2:#ff4d6d;
-      --brand3:#00c2a8;
-      --warn:#ffb020;
-      --bad:#ff3b30;
-      --good:#2ecc71;
-      --chip:#f2f4ff;
-      --mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
-      --radius:18px;
+    :root {
+      --bg1:#f6f6fb;
+      --bg2:#fff2f2;
+      --ink:#12131a;
+      --muted:#54586a;
+      --card: rgba(255,255,255,0.75);
+      --stroke: rgba(20,22,35,0.10);
+      --shadow: 0 20px 50px rgba(20,22,35,0.10);
+      --shadow2: 0 10px 25px rgba(20,22,35,0.10);
+      --accent1:#7c3aed;
+      --accent2:#ec4899;
+      --accent3:#06b6d4;
+      --good:#16a34a;
+      --bad:#ef4444;
+      --warn:#f59e0b;
+      --radius: 22px;
     }
-    *{box-sizing:border-box}
-    body{
-      margin:0;
-      font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "Apple Color Emoji","Segoe UI Emoji";
-      color:var(--ink);
+    * { box-sizing: border-box; }
+    html, body { height: 100%; }
+    body {
+      margin: 0;
+      font-family: Inter, system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+      color: var(--ink);
       background:
-        radial-gradient(1200px 600px at 10% -10%, rgba(91,108,255,.20), transparent 60%),
-        radial-gradient(900px 500px at 95% 0%, rgba(255,77,109,.18), transparent 60%),
-        radial-gradient(900px 500px at 55% 110%, rgba(0,194,168,.18), transparent 60%),
-        linear-gradient(180deg, var(--bg1), var(--bg2));
-      min-height:100vh;
+        radial-gradient(900px 500px at 15% 10%, rgba(124,58,237,.22), transparent 60%),
+        radial-gradient(700px 480px at 90% 12%, rgba(236,72,153,.18), transparent 60%),
+        radial-gradient(900px 600px at 60% 90%, rgba(6,182,212,.12), transparent 65%),
+        linear-gradient(135deg, var(--bg1), var(--bg2));
+      padding: 26px;
     }
-    header{
-      padding:28px 18px 10px;
-      max-width:1180px;
-      margin:0 auto;
+
+    /* Layout */
+    .wrap { max-width: 1200px; margin: 0 auto; }
+    header {
       display:flex;
-      gap:14px;
-      align-items:flex-end;
+      align-items:flex-start;
       justify-content:space-between;
+      gap: 16px;
+      margin-bottom: 16px;
     }
-    .title h1{
-      margin:0;
-      font-size:26px;
-      letter-spacing:.2px;
-      line-height:1.1;
+    .titleblock h1 {
+      margin: 0;
+      font-size: 40px;
+      line-height: 1.05;
+      letter-spacing: -0.03em;
     }
-    .title p{
-      margin:8px 0 0;
-      color:var(--muted);
-      max-width:820px;
-      line-height:1.35;
+    .subtitle {
+      margin-top: 10px;
+      color: var(--muted);
+      font-size: 17px;
+      max-width: 860px;
     }
-    .pill{
-      display:inline-flex;
+    .pill {
+      display:flex;
       align-items:center;
-      gap:8px;
-      padding:10px 12px;
-      border:1px solid var(--border);
-      background:rgba(255,255,255,.7);
-      backdrop-filter: blur(8px);
-      border-radius:999px;
-      box-shadow:0 8px 16px rgba(16,18,35,.06);
-      color:var(--muted);
-      font-size:13px;
-      white-space:nowrap;
+      gap: 10px;
+      padding: 12px 14px;
+      border-radius: 999px;
+      background: rgba(255,255,255,0.70);
+      border: 1px solid var(--stroke);
+      box-shadow: var(--shadow2);
+      user-select:none;
+      min-width: 280px;
+      justify-content: space-between;
     }
-    .dot{width:9px;height:9px;border-radius:999px;background:var(--brand1)}
-    main{
-      max-width:1180px;
-      margin:0 auto;
-      padding:10px 18px 40px;
+    .pill .left {
+      display:flex;
+      align-items:center;
+      gap: 10px;
+      color: var(--muted);
+      font-weight: 600;
+    }
+    .dot {
+      width: 10px; height: 10px; border-radius: 999px;
+      background: var(--warn);
+      box-shadow: 0 0 0 4px rgba(245,158,11,.15);
+    }
+    .dot.good { background: var(--good); box-shadow: 0 0 0 4px rgba(22,163,74,.15);}
+    .dot.bad { background: var(--bad); box-shadow: 0 0 0 4px rgba(239,68,68,.15);}
+    .pill strong { color: var(--ink); font-weight: 800; }
+    .pill small { color: var(--muted); font-weight: 600; }
+
+    .stepper {
+      display:flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      margin: 14px 0 18px;
+    }
+    .step {
+      padding: 10px 12px;
+      border-radius: 999px;
+      background: rgba(255,255,255,0.60);
+      border: 1px solid var(--stroke);
+      color: var(--muted);
+      font-weight: 700;
+      font-size: 14px;
+      display:flex;
+      align-items:center;
+      gap: 10px;
+    }
+    .step .num {
+      width: 26px; height: 26px; border-radius: 999px;
+      display:flex; align-items:center; justify-content:center;
+      background: linear-gradient(90deg, rgba(124,58,237,.18), rgba(236,72,153,.18));
+      border: 1px solid rgba(124,58,237,.22);
+      color: var(--ink);
+      font-weight: 900;
+    }
+    .step.active {
+      color: var(--ink);
+      background: rgba(255,255,255,0.85);
+      box-shadow: var(--shadow2);
+      border-color: rgba(124,58,237,.25);
+    }
+
+    .grid {
       display:grid;
-      grid-template-columns: 420px 1fr;
-      gap:18px;
+      grid-template-columns: 1fr 1.25fr;
+      gap: 18px;
+      align-items:start;
     }
-    @media (max-width: 980px){
-      main{grid-template-columns:1fr}
+    @media (max-width: 1020px) {
+      header { flex-direction: column; }
+      .pill { width: 100%; }
+      .grid { grid-template-columns: 1fr; }
     }
-    .card{
-      background:rgba(255,255,255,.86);
-      border:1px solid var(--border);
-      border-radius:var(--radius);
-      box-shadow:var(--shadow);
-      padding:16px;
+
+    /* Cards */
+    .card {
+      background: var(--card);
+      border: 1px solid var(--stroke);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      overflow: hidden;
+      backdrop-filter: blur(10px);
     }
-    .card h2{
-      margin:0 0 10px;
-      font-size:16px;
+    .card .hd {
+      padding: 18px 18px 10px 18px;
+      border-bottom: 1px solid rgba(20,22,35,.06);
+      display:flex;
+      align-items:center;
+      justify-content: space-between;
+      gap: 12px;
     }
-    .grid2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
-    .grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
-    label{
+    .card h2 {
+      margin:0;
+      font-size: 20px;
+      letter-spacing:-0.02em;
+    }
+    .hint {
+      color: var(--muted);
+      font-size: 14px;
+      line-height: 1.4;
+    }
+    .card .bd { padding: 18px; }
+
+    /* Form */
+    label {
       display:block;
-      font-size:12px;
-      color:var(--muted);
-      margin:10px 0 6px;
+      font-size: 13px;
+      font-weight: 800;
+      letter-spacing: 0.02em;
+      text-transform: uppercase;
+      color: rgba(18,19,26,.78);
+      margin: 0 0 8px;
     }
-    input, select, textarea{
-      width:100%;
-      border:1px solid var(--border);
-      border-radius:14px;
-      padding:10px 12px;
-      font-size:14px;
-      background:#fff;
-      color:var(--ink);
-      outline:none;
-      box-shadow: 0 6px 16px rgba(16,18,35,.04);
+    .row { display:grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    .row3 { display:grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; }
+    @media (max-width: 720px) {
+      .row, .row3 { grid-template-columns: 1fr; }
     }
-    textarea{min-height:110px; font-family:var(--mono); font-size:12px; line-height:1.35}
-    input:focus, select:focus, textarea:focus{
-      border-color: rgba(91,108,255,.55);
-      box-shadow: 0 0 0 5px rgba(91,108,255,.14), 0 10px 24px rgba(16,18,35,.06);
+
+    select, input[type="number"], input[type="text"], textarea {
+      width: 100%;
+      font-size: 18px;
+      padding: 12px 12px;
+      border-radius: 14px;
+      border: 1px solid rgba(20,22,35,.16);
+      background: rgba(255,255,255,.9);
+      outline: none;
+      color: var(--ink);
+      box-shadow: inset 0 1px 0 rgba(0,0,0,0.03);
     }
-    .btnRow{display:flex;gap:10px;margin-top:12px;flex-wrap:wrap}
-    button{
-      border:0;
-      border-radius:14px;
-      padding:11px 14px;
-      font-weight:700;
-      cursor:pointer;
-      box-shadow:0 10px 20px rgba(16,18,35,.08);
-      transition: transform .08s ease, box-shadow .12s ease, opacity .12s ease;
-      font-size:14px;
+    textarea {
+      min-height: 150px;
+      resize: vertical;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+      font-size: 15px;
+      line-height: 1.35;
     }
-    button:active{transform: translateY(1px); box-shadow:0 6px 14px rgba(16,18,35,.08)}
-    .primary{
-      background: linear-gradient(90deg, var(--brand1), var(--brand2));
-      color:white;
+    select:focus, input:focus, textarea:focus {
+      border-color: rgba(124,58,237,.5);
+      box-shadow: 0 0 0 4px rgba(124,58,237,.12);
     }
-    .ghost{
-      background:rgba(255,255,255,.75);
-      border:1px solid var(--border);
-      color:var(--ink);
+    .micro {
+      font-size: 13px;
+      color: var(--muted);
+      margin-top: 6px;
+      line-height: 1.35;
     }
-    .chipRow{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
-    .chip{
-      background:var(--chip);
-      border:1px solid rgba(91,108,255,.18);
-      color:#2a2f55;
-      padding:7px 10px;
-      border-radius:999px;
-      font-size:12px;
+
+    details {
+      margin-top: 12px;
+      border-radius: 16px;
+      border: 1px solid rgba(20,22,35,.08);
+      background: rgba(255,255,255,.55);
+      padding: 12px 12px 14px;
     }
-    .warn{border-color: rgba(255,176,32,.35); background: rgba(255,176,32,.12)}
-    .good{border-color: rgba(46,204,113,.35); background: rgba(46,204,113,.10)}
-    .bad{border-color: rgba(255,59,48,.35); background: rgba(255,59,48,.10)}
-    .muted{color:var(--muted)}
-    .kpiGrid{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}
-    @media (max-width: 980px){ .kpiGrid{grid-template-columns:repeat(2,1fr)} }
-    .kpi{
-      border:1px solid var(--border);
-      border-radius:16px;
-      padding:12px;
-      background:rgba(255,255,255,.8);
+    details > summary {
+      cursor: pointer;
+      font-weight: 900;
+      list-style: none;
+      display:flex;
+      align-items:center;
+      justify-content: space-between;
+      gap: 10px;
+      user-select: none;
+      color: rgba(18,19,26,.84);
     }
-    .kpi .label{font-size:12px;color:var(--muted)}
-    .kpi .value{font-size:18px;font-weight:800;margin-top:6px}
-    .table{
-      width:100%;
-      border-collapse:separate;
-      border-spacing:0;
-      overflow:hidden;
-      border-radius:16px;
-      border:1px solid var(--border);
-      background:#fff;
+    details > summary::-webkit-details-marker { display:none; }
+    .chev {
+      width: 28px; height: 28px;
+      border-radius: 10px;
+      display:flex; align-items:center; justify-content:center;
+      border: 1px solid rgba(20,22,35,.12);
+      background: rgba(255,255,255,.7);
+      color: var(--muted);
+      font-weight: 900;
     }
-    .table th, .table td{
-      padding:10px 10px;
-      border-bottom:1px solid rgba(16,18,35,.08);
-      font-size:13px;
-      text-align:left;
-      vertical-align:top;
+
+    /* Actions */
+    .actions {
+      display:flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      margin-top: 14px;
     }
-    .table th{font-size:12px;color:var(--muted);background:rgba(246,247,255,.8)}
-    .table tr:last-child td{border-bottom:0}
-    .rightCol{display:flex;flex-direction:column;gap:18px}
-    .split{
+    button {
+      appearance: none;
+      border: none;
+      cursor: pointer;
+      font-weight: 900;
+      border-radius: 16px;
+      padding: 14px 16px;
+      font-size: 18px;
+      letter-spacing: 0.01em;
+      transition: transform .06s ease, box-shadow .2s ease, filter .2s ease;
+    }
+    button.primary {
+      color: white;
+      background: linear-gradient(90deg, var(--accent1), var(--accent2));
+      box-shadow: 0 16px 30px rgba(124,58,237,.22);
+    }
+    button.primary:hover { filter: brightness(1.04); }
+    button.primary:active { transform: translateY(1px); }
+    button.ghost {
+      background: rgba(255,255,255,.85);
+      border: 1px solid rgba(20,22,35,.14);
+      color: var(--ink);
+      box-shadow: var(--shadow2);
+    }
+    button.ghost:hover { filter: brightness(1.02); }
+    .disabled {
+      opacity: .55;
+      pointer-events: none;
+      filter: grayscale(.3);
+    }
+
+    /* Chips */
+    .chips {
+      display:flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 10px;
+    }
+    .chip {
+      padding: 8px 10px;
+      border-radius: 999px;
+      border: 1px solid rgba(20,22,35,.12);
+      background: rgba(255,255,255,.75);
+      color: rgba(18,19,26,.85);
+      font-weight: 800;
+      font-size: 13px;
+    }
+
+    /* Snapshot KPIs */
+    .kpiGrid {
       display:grid;
-      grid-template-columns:1fr 1fr;
-      gap:12px;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 12px;
+      padding: 18px;
     }
-    @media (max-width: 980px){ .split{grid-template-columns:1fr} }
-    .canvasWrap{
-      border:1px solid var(--border);
-      border-radius:16px;
-      overflow:hidden;
-      background:#fff;
-      padding:8px;
+    @media (max-width: 980px) {
+      .kpiGrid { grid-template-columns: repeat(2, 1fr); }
     }
-    canvas{width:100%; height:280px;}
-    .small{font-size:12px}
-    .err{
-      margin-top:10px;
-      padding:10px 12px;
-      border-radius:16px;
-      border:1px solid rgba(255,59,48,.28);
-      background:rgba(255,59,48,.10);
-      color:#8a1a12;
-      display:none;
+    .kpi {
+      border-radius: 18px;
+      border: 1px solid rgba(20,22,35,.10);
+      background: rgba(255,255,255,.78);
+      padding: 14px 14px 12px;
+      box-shadow: inset 0 1px 0 rgba(0,0,0,0.03);
     }
-    .ok{
-      margin-top:10px;
-      padding:10px 12px;
-      border-radius:16px;
-      border:1px solid rgba(46,204,113,.28);
-      background:rgba(46,204,113,.10);
-      color:#145a32;
-      display:none;
+    .kpi .lbl { color: var(--muted); font-weight: 800; font-size: 12px; text-transform: uppercase; letter-spacing: .03em; }
+    .kpi .val { margin-top: 8px; font-size: 22px; font-weight: 900; letter-spacing: -0.02em; }
+
+    /* Tables */
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      overflow: hidden;
+      border-radius: 18px;
+      border: 1px solid rgba(20,22,35,.10);
+      background: rgba(255,255,255,.78);
     }
-    .footerNote{
-      margin-top:10px;
-      font-size:12px;
-      color:var(--muted);
-      line-height:1.35;
+    th, td {
+      padding: 12px 12px;
+      text-align: left;
+      border-bottom: 1px solid rgba(20,22,35,.06);
+      font-size: 15px;
     }
-    .tinyLink{
-      color: var(--brand1);
-      text-decoration:none;
-      font-weight:700;
+    th {
+      font-size: 12px;
+      letter-spacing: .04em;
+      text-transform: uppercase;
+      color: rgba(18,19,26,.72);
+      font-weight: 900;
+      background: rgba(124,58,237,.06);
     }
+    tr:last-child td { border-bottom: none; }
+    .twoTables {
+      display:grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 14px;
+      padding: 18px;
+    }
+    @media (max-width: 980px) {
+      .twoTables { grid-template-columns: 1fr; }
+    }
+
+    /* Chart placeholder */
+    .chartBox {
+      margin: 0 18px 18px;
+      border-radius: 18px;
+      border: 1px dashed rgba(20,22,35,.25);
+      background: rgba(255,255,255,.55);
+      padding: 16px;
+      min-height: 220px;
+      color: var(--muted);
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      font-weight: 700;
+    }
+
+    .sectionTitle {
+      padding: 18px 18px 0;
+      font-weight: 900;
+      font-size: 18px;
+      letter-spacing: -0.02em;
+    }
+
+    .callout {
+      margin-top: 14px;
+      padding: 12px 14px;
+      border-radius: 16px;
+      border: 1px solid rgba(20,22,35,.10);
+      background: rgba(255,255,255,.70);
+      color: rgba(18,19,26,.85);
+    }
+    .callout b { font-weight: 900; }
+
+    .footerNote {
+      margin-top: 14px;
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.45;
+    }
+
+    /* Utility */
+    .mt10 { margin-top: 10px; }
+    .mt14 { margin-top: 14px; }
+    .mt18 { margin-top: 18px; }
+    .hide { display:none !important; }
   </style>
 </head>
+
 <body>
-  <header>
-    <div class="title">
-      <h1>SMTA Signal Engine</h1>
-      <p>
-        A deployable, EOD-based signal + allocation engine that outputs an actionable plan (what to buy/sell, sizing, rebalance cadence)
-        and a walk-forward benchmark panel (<b>SSE vs SPY</b>) with a simple slippage model.
-      </p>
+  <div class="wrap">
+    <header>
+      <div class="titleblock">
+        <h1>SMTA Signal Engine</h1>
+        <div class="subtitle">
+          This generates an <b>action plan</b> (what to buy/sell, suggested sizing, and a hold / rebalance estimate) using end‑of‑day data.
+          You <b>execute manually</b> in your broker — the engine just gives you a clean plan.
+        </div>
+
+        <div class="stepper" aria-label="workflow">
+          <div class="step active" id="step1"><span class="num">1</span> Setup</div>
+          <div class="step" id="step2"><span class="num">2</span> Optional holdings</div>
+          <div class="step" id="step3"><span class="num">3</span> Generate plan</div>
+          <div class="step" id="step4"><span class="num">4</span> Execute + rebalance</div>
+        </div>
+      </div>
+
+      <div class="pill" id="healthPill">
+        <div class="left">
+          <span class="dot" id="healthDot"></span>
+          <span id="healthText">Checking backend…</span>
+        </div>
+        <div>
+          <small>API</small> <strong>Tiingo</strong>
+        </div>
+      </div>
+    </header>
+
+    <div class="grid">
+      <!-- LEFT COLUMN (Guided inputs) -->
+      <div style="display:flex; flex-direction:column; gap: 18px;">
+        <div class="card">
+          <div class="hd">
+            <div>
+              <h2>1) Setup (the only required step)</h2>
+              <div class="hint">Pick a universe, choose how often you want it to react, and set your account size.</div>
+            </div>
+          </div>
+          <div class="bd">
+            <div class="row">
+              <div>
+                <label for="universeMode">Universe</label>
+                <select id="universeMode">
+                  <option value="etfRotation">ETF Rotation (recommended)</option>
+                  <option value="megaTech">Mega Tech (momentum)</option>
+                  <option value="custom">Custom tickers (advanced)</option>
+                </select>
+                <div class="micro">If you’re not sure: leave this on <b>ETF Rotation</b>.</div>
+              </div>
+              <div>
+                <label for="cadence">Rebalance cadence</label>
+                <select id="cadence">
+                  <option value="weekly">Weekly (reacts faster)</option>
+                  <option value="biweekly">Biweekly (steady)</option>
+                  <option value="monthly">Monthly (calmer)</option>
+                </select>
+                <div class="micro">Weekly = more responsive. Monthly = fewer changes.</div>
+              </div>
+            </div>
+
+            <div class="row3 mt14">
+              <div>
+                <label for="capital">Capital</label>
+                <input id="capital" type="number" min="0" step="100" value="100000" />
+                <div class="micro">Currency doesn’t matter — used for share sizing.</div>
+              </div>
+              <div>
+                <label for="topN">Top N assets</label>
+                <input id="topN" type="number" min="1" max="20" step="1" value="3" />
+                <div class="micro">How many winners to hold at once.</div>
+              </div>
+              <div>
+                <label for="noTradePct">No‑trade zone (%)</label>
+                <input id="noTradePct" type="number" min="0" max="100" step="1" value="5" />
+                <div class="micro">Avoid tiny rebalances (reduces churn).</div>
+              </div>
+            </div>
+
+            <div class="mt14" id="customTickersWrap" class="hide">
+              <label for="customTickers">Custom tickers (comma‑separated)</label>
+              <input id="customTickers" type="text" placeholder="SPY, QQQ, IWM, TLT, GLD" />
+              <div class="micro">Use liquid tickers. This is for people who already know the menu.</div>
+            </div>
+
+            <div class="chips" id="chipRow" aria-label="universe-preview"></div>
+
+            <details class="mt14">
+              <summary>
+                Advanced knobs (optional)
+                <span class="chev">⌄</span>
+              </summary>
+              <div class="row3 mt14">
+                <div>
+                  <label for="minHoldDays">Min hold (days)</label>
+                  <input id="minHoldDays" type="number" min="0" step="1" value="10" />
+                  <div class="micro">Prevents flip‑flopping.</div>
+                </div>
+                <div>
+                  <label for="targetVol">Target vol (annual)</label>
+                  <input id="targetVol" type="number" min="0" step="0.01" value="0.12" />
+                  <div class="micro">Sizing control (risk budget).</div>
+                </div>
+                <div>
+                  <label for="slippageBps">Slippage (bps)</label>
+                  <input id="slippageBps" type="number" min="0" step="1" value="5" />
+                  <div class="micro">Conservative friction estimate.</div>
+                </div>
+              </div>
+
+              <div class="row mt14">
+                <div>
+                  <label for="minMomentum">Momentum gate (score)</label>
+                  <input id="minMomentum" type="number" min="0" step="0.1" value="0" />
+                  <div class="micro">Raise to trade less (but miss some rebounds).</div>
+                </div>
+                <div>
+                  <label for="seasonalityWeight">Seasonality weight</label>
+                  <input id="seasonalityWeight" type="number" min="0" max="1" step="0.01" value="0.05" />
+                  <div class="micro">Small by design — seasonality is noisy.</div>
+                </div>
+              </div>
+
+              <div class="footerNote">
+                These don’t make you “smarter” by default — they make the engine <i>behave</i> differently.
+                If you don’t know what a knob does, leave it alone (seriously).
+              </div>
+            </details>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="hd">
+            <div>
+              <h2>2) Optional: paste your current holdings</h2>
+              <div class="hint">If you paste holdings, the engine will output <b>trades vs what you already own</b>.</div>
+            </div>
+          </div>
+          <div class="bd">
+            <label for="holdingsCsv">Holdings CSV</label>
+            <textarea id="holdingsCsv" placeholder="ticker,shares,avgCost,lastTradeDate&#10;SPY,10,450,2025-11-10&#10;QQQ,5,390,2025-11-24"></textarea>
+            <div class="micro">Format: <b>ticker,shares,avgCost,lastTradeDate</b>. Headers optional. Dates optional.</div>
+
+            <div class="callout">
+              <b>Don’t paste anything?</b> No problem. You’ll still get the <b>target allocation</b>. Trades panel will be “buy list” style.
+            </div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="hd">
+            <div>
+              <h2>3) Generate the plan</h2>
+              <div class="hint">Click once. Wait. Then execute the suggested trades in your broker.</div>
+            </div>
+          </div>
+          <div class="bd">
+            <div class="actions">
+              <button class="primary" id="runBtn">Generate Plan + Benchmark</button>
+              <button class="ghost" id="downloadBtn">Download Plan JSON</button>
+              <button class="ghost" id="downloadCsvBtn">Download Trades CSV</button>
+            </div>
+
+            <div class="callout mt14">
+              <b>Sequence:</b> Setup → (optional holdings) → Generate → Execute trades → Re-run on the next cadence.
+            </div>
+
+            <div class="footerNote">
+              This tool is a decision assistant, not a broker. No guarantees. Real markets are messy. Use position sizing and don’t YOLO.
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- RIGHT COLUMN (Outputs) -->
+      <div style="display:flex; flex-direction:column; gap: 18px;">
+        <div class="card">
+          <div class="hd">
+            <div>
+              <h2>Today’s Snapshot</h2>
+              <div class="hint">A quick “what’s happening” view based on current inputs.</div>
+            </div>
+          </div>
+          <div class="kpiGrid">
+            <div class="kpi"><div class="lbl">As of</div><div class="val" id="k_asof">—</div></div>
+            <div class="kpi"><div class="lbl">Regime</div><div class="val" id="k_regime">—</div></div>
+            <div class="kpi"><div class="lbl">Next rebalance</div><div class="val" id="k_next">—</div></div>
+            <div class="kpi"><div class="lbl">Hold estimate</div><div class="val" id="k_hold">—</div></div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="hd">
+            <div>
+              <h2>Results</h2>
+              <div class="hint">Target allocation + trade list. If holdings are pasted, trades are “vs holdings”.</div>
+            </div>
+          </div>
+
+          <div class="twoTables">
+            <div>
+              <div class="sectionTitle" style="padding:0 0 10px;">Target Allocation</div>
+              <table id="allocTable" aria-label="allocation-table">
+                <thead><tr><th>Ticker</th><th>Weight</th><th>Score</th><th>Vol</th></tr></thead>
+                <tbody><tr><td colspan="4">Run the engine…</td></tr></tbody>
+              </table>
+            </div>
+            <div>
+              <div class="sectionTitle" style="padding:0 0 10px;">Trades (vs holdings)</div>
+              <table id="tradeTable" aria-label="trade-table">
+                <thead><tr><th>Action</th><th>Ticker</th><th>Shares</th><th>Est $</th><th>Reason</th></tr></thead>
+                <tbody><tr><td colspan="5">Paste holdings (optional) and run…</td></tr></tbody>
+              </table>
+            </div>
+          </div>
+
+          <div class="sectionTitle">Benchmark Panel: SSE vs SPY</div>
+          <div class="chartBox" id="chart">Run once to render benchmark…</div>
+
+          <div class="bd" style="padding-top: 0;">
+            <div class="row">
+              <div>
+                <div class="sectionTitle" style="padding: 0 0 10px;">Metrics (SSE)</div>
+                <div id="metricsSSE" class="hint">—</div>
+              </div>
+              <div>
+                <div class="sectionTitle" style="padding: 0 0 10px;">Metrics (SPY)</div>
+                <div id="metricsSPY" class="hint">—</div>
+              </div>
+            </div>
+
+            <div class="footerNote mt14">
+              Benchmark is walk‑forward (no lookahead) but simplified: EOD adjusted prices, no taxes, no dividends beyond adjusted pricing.
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
-    <div class="pill" id="healthPill"><span class="dot"></span><span id="healthText">Checking backend…</span></div>
-  </header>
-
-  <main>
-    <section class="card">
-      <h2>1) Configure</h2>
-      <div class="grid2">
-        <div>
-          <label>Universe</label>
-          <select id="universeMode">
-            <option value="etf">ETF Rotation (recommended)</option>
-            <option value="stocks">Large-cap Stocks (noisier)</option>
-            <option value="custom">Custom tickers</option>
-          </select>
-        </div>
-        <div>
-          <label>Cadence</label>
-          <select id="cadence">
-            <option value="weekly">Weekly (signal reacts faster)</option>
-            <option value="monthly">Monthly (often steadier)</option>
-          </select>
-        </div>
-      </div>
-
-      <div id="customTickersWrap" style="display:none;">
-        <label>Custom tickers (comma-separated)</label>
-        <input id="customTickers" placeholder="e.g., SPY, QQQ, IEF, GLD, XOM, AAPL" />
-      </div>
-
-      <div class="grid3">
-        <div>
-          <label>Capital (CAD/USD doesn’t matter)</label>
-          <input id="capital" type="number" value="100000" min="0" step="1000" />
-        </div>
-        <div>
-          <label>Top N assets</label>
-          <input id="topN" type="number" value="3" min="1" max="8" />
-        </div>
-        <div>
-          <label>No-trade zone (% weight change)</label>
-          <input id="noTradePct" type="number" value="5" min="0" max="25" step="0.5" />
-        </div>
-      </div>
-
-      <div class="grid3">
-        <div>
-          <label>Min holding period (days)</label>
-          <input id="minHoldDays" type="number" value="10" min="0" max="90" />
-        </div>
-        <div>
-          <label>Target portfolio vol (annual)</label>
-          <input id="targetVol" type="number" value="0.12" min="0.05" max="0.30" step="0.01" />
-        </div>
-        <div>
-          <label>Slippage (bps per turnover)</label>
-          <input id="slippageBps" type="number" value="5" min="0" max="50" step="1" />
-        </div>
-      </div>
-
-      <div class="grid2">
-        <div>
-          <label>Minimum momentum gate (score)</label>
-          <input id="minMomentum" type="number" value="0" step="0.01" />
-          <div class="footerNote">0 means “must be non-negative” by default. Raising this reduces trades but may miss rebounds.</div>
-        </div>
-        <div>
-          <label>Seasonality weight</label>
-          <input id="seasonalityWeight" type="number" value="0.05" min="0" max="0.20" step="0.01" />
-          <div class="footerNote">Small by design. Seasonality is real-ish but noisy.</div>
-        </div>
-      </div>
-
-      <h2 style="margin-top:16px;">2) Optional: paste current holdings</h2>
-      <div class="muted small">CSV format (headers optional): <span class="chip">ticker,shares,avgCost,lastTradeDate</span></div>
-      <label>Holdings CSV</label>
-      <textarea id="holdingsCsv" placeholder="ticker,shares,avgCost,lastTradeDate
-SPY,10,450,2025-11-10
-QQQ,5,390,2025-11-24"></textarea>
-
-      <div class="btnRow">
-        <button class="primary" id="runBtn">Generate Plan + Benchmark</button>
-        <button class="ghost" id="downloadBtn" disabled>Download Plan JSON</button>
-        <button class="ghost" id="downloadCsvBtn" disabled>Download Trades CSV</button>
-      </div>
-
-      <div class="err" id="errBox"></div>
-      <div class="ok" id="okBox"></div>
-
-      <div class="footerNote">
-        Backend must have <b>TIINGO_TOKEN</b> set. If the health pill is red, the server can’t fetch.
-      </div>
-    </section>
-
-    <section class="rightCol">
-      <section class="card">
-        <h2>Today’s Snapshot</h2>
-        <div class="kpiGrid">
-          <div class="kpi"><div class="label">As of</div><div class="value" id="k_asof">—</div></div>
-          <div class="kpi"><div class="label">Regime</div><div class="value" id="k_regime">—</div></div>
-          <div class="kpi"><div class="label">Next rebalance</div><div class="value" id="k_next">—</div></div>
-          <div class="kpi"><div class="label">Hold estimate</div><div class="value" id="k_hold">—</div></div>
-        </div>
-        <div class="chipRow" id="chipRow"></div>
-      </section>
-
-      <section class="card split">
-        <div>
-          <h2>Target Allocation</h2>
-          <table class="table" id="allocTable">
-            <thead><tr><th>Ticker</th><th>Weight</th><th>Score</th><th>Vol</th></tr></thead>
-            <tbody><tr><td colspan="4" class="muted">Run the engine…</td></tr></tbody>
-          </table>
-        </div>
-        <div>
-          <h2>Trades (vs holdings)</h2>
-          <table class="table" id="tradeTable">
-            <thead><tr><th>Action</th><th>Ticker</th><th>Shares</th><th>Est $</th><th>Reason</th></tr></thead>
-            <tbody><tr><td colspan="5" class="muted">Paste holdings (optional) and run…</td></tr></tbody>
-          </table>
-        </div>
-      </section>
-
-      <section class="card">
-        <h2>Benchmark Panel: SSE vs SPY</h2>
-        <div class="canvasWrap"><canvas id="chart" width="1000" height="320"></canvas></div>
-        <div class="split" style="margin-top:12px;">
-          <div>
-            <h2>Metrics (SSE)</h2>
-            <table class="table" id="mSse"></table>
-          </div>
-          <div>
-            <h2>Metrics (SPY)</h2>
-            <table class="table" id="mSpy"></table>
-          </div>
-        </div>
-        <div class="footerNote">
-          This benchmark is walk-forward (no lookahead), but still simplified (EOD, no dividends modelling beyond adjusted prices, no taxes).
-          If you want, I can add dividend cashflows + better turnover tracking next.
-        </div>
-      </section>
-    </section>
-  </main>
+  </div>
 
   <script>
-    const el = (id) => document.getElementById(id);
+const el = (id) => document.getElementById(id);
     const fmtPct = (x) => (x*100).toFixed(1) + "%";
     const fmtNum = (x) => (Number(x)||0).toFixed(2);
     const fmtMoney = (x) => "$" + (Number(x)||0).toLocaleString(undefined,{maximumFractionDigits:0});
