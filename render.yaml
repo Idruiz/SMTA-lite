@@ -1,0 +1,11 @@
+services:
+  - type: web
+    name: smta-signal-engine
+    env: node
+    plan: free
+    buildCommand: npm install
+    startCommand: npm start
+    autoDeploy: true
+    envVars:
+      - key: TIINGO_TOKEN
+        sync: false
