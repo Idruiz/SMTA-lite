@@ -1,5 +1,6 @@
 import express from "express";
 import path from "path";
+import fs from "fs";
 import { fileURLToPath } from "url";
 
 const app = express();
@@ -12,16 +13,13 @@ const PORT = process.env.PORT || 3000;
 const TIINGO_TOKEN = process.env.TIINGO_TOKEN || "";
 
 /**
- * ─────────────────────────────────────────────────────────────────────────────
  * SMTA Signal Engine (SSE)
  * - EOD data (Tiingo)
- * - Robust-ish: multi-horizon momentum + vol targeting + regime filter + no-trade zone
- * - Actionable: tells you what to buy/sell + how much + when to rebalance + hold estimate
- * - Benchmark: walk-forward rebalance backtest vs SPY buy&hold (with simple slippage)
- * ─────────────────────────────────────────────────────────────────────────────
- * IMPORTANT:
- * - This is NOT financial advice. It's an analytics tool.
- * - You execute manually. This system outputs a plan and a paper benchmark.
+ * - Multi-horizon momentum + vol targeting + regime filter + no-trade zone
+ * - Actionable: buy/sell + sizing + rebalance + hold estimate
+ * - Benchmark: walk-forward rebalance backtest vs SPY buy&hold (simple slippage)
+ *
+ * NOTE: This is an analytics tool. You execute manually.
  */
 
 function assertToken() {
@@ -43,12 +41,11 @@ function addDays(dateStr, days) {
 }
 
 function clamp(x, a, b) { return Math.max(a, Math.min(b, x)); }
-
-function mean(arr) { return arr.length ? arr.reduce((s,v)=>s+v,0)/arr.length : 0; }
+function mean(arr) { return arr.length ? arr.reduce((s, v) => s + v, 0) / arr.length : 0; }
 function stdev(arr) {
   if (arr.length < 2) return 0;
   const m = mean(arr);
-  const v = mean(arr.map(x => (x-m)*(x-m)));
+  const v = mean(arr.map(x => (x - m) * (x - m)));
   return Math.sqrt(v);
 }
 function maxDrawdown(equity) {
@@ -60,6 +57,20 @@ function maxDrawdown(equity) {
     mdd = Math.max(mdd, dd);
   }
   return mdd;
+}
+
+// Small concurrency limiter so you don't nuke Tiingo / get random 429s.
+async function mapLimit(items, limit, fn) {
+  const results = new Array(items.length);
+  let i = 0;
+  const workers = Array.from({ length: Math.max(1, limit) }, async () => {
+    while (i < items.length) {
+      const idx = i++;
+      results[idx] = await fn(items[idx], idx);
+    }
+  });
+  await Promise.all(workers);
+  return results;
 }
 
 async function tiingoPrices(ticker, startDate, endDate) {
@@ -84,9 +95,9 @@ async function tiingoPrices(ticker, startDate, endDate) {
     err.status = 404;
     throw err;
   }
-  // Normalize date + pick adjClose (preferred)
+
   return json.map(r => ({
-    date: (r.date || "").toString().slice(0,10),
+    date: (r.date || "").toString().slice(0, 10),
     close: Number.isFinite(r.adjClose) ? Number(r.adjClose) : Number(r.close),
     rawClose: Number(r.close),
     volume: Number(r.volume || 0)
@@ -95,10 +106,10 @@ async function tiingoPrices(ticker, startDate, endDate) {
 
 function computeDailyReturns(series) {
   const rets = [];
-  for (let i=1;i<series.length;i++) {
-    const prev = series[i-1].close;
+  for (let i = 1; i < series.length; i++) {
+    const prev = series[i - 1].close;
     const cur = series[i].close;
-    if (prev > 0 && cur > 0) rets.push(Math.log(cur/prev));
+    if (prev > 0 && cur > 0) rets.push(Math.log(cur / prev));
   }
   return rets;
 }
@@ -110,22 +121,21 @@ function sma(values, period) {
 }
 
 function momentumScore(series) {
-  // Weighted multi-horizon log returns: 1m, 3m, 6m, 12m (approx trading days)
   const closes = series.map(x => x.close);
   const n = closes.length;
-  const look = (d) => (n > d ? Math.log(closes[n-1] / closes[n-1-d]) : 0);
+  const look = (d) => (n > d ? Math.log(closes[n - 1] / closes[n - 1 - d]) : 0);
 
-  const r21  = look(21);
-  const r63  = look(63);
+  const r21 = look(21);
+  const r63 = look(63);
   const r126 = look(126);
   const r252 = look(252);
 
-  const accel = r21 - r63; // short-term acceleration proxy
-  const score = (0.10*r21 + 0.20*r63 + 0.30*r126 + 0.40*r252) + 0.15*accel;
+  const accel = r21 - r63;
+  const score = (0.10 * r21 + 0.20 * r63 + 0.30 * r126 + 0.40 * r252) + 0.15 * accel;
   return { score, r21, r63, r126, r252, accel };
 }
 
-function realizedVol(series, window=63) {
+function realizedVol(series, window = 63) {
   const rets = computeDailyReturns(series);
   const slice = rets.slice(-window);
   const v = stdev(slice) * Math.sqrt(252);
@@ -133,18 +143,15 @@ function realizedVol(series, window=63) {
 }
 
 function monthSeasonalityTilt(series, todayDateStr) {
-  // Very mild tilt: compare avg monthly log-return for the current month vs overall.
-  // This is intentionally tiny weight—seasonality is weak/noisy.
-  const month = Number(todayDateStr.slice(5,7));
+  const month = Number(todayDateStr.slice(5, 7));
   const byMonth = new Map();
-  // build month-end returns
   let prevMonth = null;
   let prevClose = null;
+
   for (const r of series) {
-    const m = Number(r.date.slice(5,7));
+    const m = Number(r.date.slice(5, 7));
     if (prevMonth === null) { prevMonth = m; prevClose = r.close; continue; }
     if (m !== prevMonth) {
-      // month changed => previous month return from prevClose to prior day's close
       const ret = Math.log(r.close / prevClose);
       if (!byMonth.has(prevMonth)) byMonth.set(prevMonth, []);
       byMonth.get(prevMonth).push(ret);
@@ -152,60 +159,58 @@ function monthSeasonalityTilt(series, todayDateStr) {
       prevClose = r.close;
     }
   }
+
   const all = Array.from(byMonth.values()).flat();
   const overall = mean(all);
   const cur = mean(byMonth.get(month) || []);
-  const tilt = clamp(cur - overall, -0.01, 0.01); // cap at ±1% monthly in log terms
+  const tilt = clamp(cur - overall, -0.01, 0.01);
   return Number.isFinite(tilt) ? tilt : 0;
 }
 
 function detectRegime(spySeries) {
   const closes = spySeries.map(x => x.close);
   const sma200 = sma(closes, 200);
-  const sma50  = sma(closes, 50);
-  const last   = closes[closes.length-1];
+  const sma50 = sma(closes, 50);
+  const last = closes[closes.length - 1];
 
   const vol20 = stdev(computeDailyReturns(spySeries).slice(-20)) * Math.sqrt(252);
-  const volSpike = vol20 > 0.22; // heuristic threshold
+  const volSpike = vol20 > 0.22;
 
   if (sma200 === null || sma50 === null) return { regime: "unknown", detail: "Not enough history", vol20, volSpike };
   const riskOn = (last > sma200) && (sma50 > sma200);
+
   if (riskOn && !volSpike) return { regime: "risk_on", detail: "SPY > SMA200 and SMA50>SMA200", vol20, volSpike };
-  if (riskOn && volSpike)  return { regime: "caution", detail: "Risk-on trend but volatility spike", vol20, volSpike };
+  if (riskOn && volSpike) return { regime: "caution", detail: "Risk-on trend but volatility spike", vol20, volSpike };
   return { regime: "risk_off", detail: "SPY under long-term trend", vol20, volSpike };
 }
 
-function invVolWeights(items, minVol=0.05, maxVol=1.5) {
+function invVolWeights(items, minVol = 0.05, maxVol = 1.5) {
   const inv = items.map(it => 1 / clamp(it.vol, minVol, maxVol));
-  const s = inv.reduce((a,b)=>a+b,0) || 1;
-  return inv.map(v => v/s);
+  const s = inv.reduce((a, b) => a + b, 0) || 1;
+  return inv.map(v => v / s);
 }
 
 function nextRebalanceDate(latestDate, cadence) {
-  // cadence: "weekly" => next Friday, "monthly" => next month-end
   const d = new Date(latestDate + "T00:00:00Z");
   if (cadence === "monthly") {
     const y = d.getUTCFullYear();
     const m = d.getUTCMonth();
-    // next month end
-    const next = new Date(Date.UTC(y, m+2, 0)); // day 0 => last day of previous month; m+2 => end of next month
+    const next = new Date(Date.UTC(y, m + 2, 0));
     return iso(next);
   }
-  // weekly: find next Friday (UTC)
-  const day = d.getUTCDay(); // 0 Sun ... 5 Fri
-  const delta = (5 - day + 7) % 7 || 7; // if already Friday, next week's Friday
+  const day = d.getUTCDay(); // 0..6
+  const delta = (5 - day + 7) % 7 || 7;
   d.setUTCDate(d.getUTCDate() + delta);
   return iso(d);
 }
 
 function normalizeHoldings(holdings) {
-  // Expect array: {ticker, shares, avgCost?}
   const out = [];
   for (const h of (holdings || [])) {
     const t = (h.ticker || "").toUpperCase().trim();
     const shares = Number(h.shares || 0);
     const avgCost = Number(h.avgCost || 0);
-    const lastTradeDate = (h.lastTradeDate || "").slice(0,10);
+    const lastTradeDate = (h.lastTradeDate || "").slice(0, 10);
     if (!t || !Number.isFinite(shares)) continue;
     out.push({ ticker: t, shares, avgCost, lastTradeDate: lastTradeDate || null });
   }
@@ -213,24 +218,22 @@ function normalizeHoldings(holdings) {
 }
 
 function parseHoldingsCSV(text) {
-  // CSV with columns: ticker,shares,avgCost,lastTradeDate (headers optional)
-  const lines = (text || "").split(/\r?\n/).map(l=>l.trim()).filter(Boolean);
+  const lines = (text || "").split(/\r?\n/).map(l => l.trim()).filter(Boolean);
   if (!lines.length) return [];
-  const rows = lines.map(l => l.split(",").map(x=>x.trim()));
-  // detect header
-  const first = rows[0].map(x=>x.toLowerCase());
+  const rows = lines.map(l => l.split(",").map(x => x.trim()));
+  const first = rows[0].map(x => x.toLowerCase());
   const hasHeader = first.includes("ticker") || first.includes("shares");
   const data = hasHeader ? rows.slice(1) : rows;
+
   return data.map(r => ({
     ticker: r[0],
     shares: Number(r[1] || 0),
     avgCost: Number(r[2] || 0),
     lastTradeDate: r[3] || ""
-  })).filter(r=>r.ticker);
+  })).filter(r => r.ticker);
 }
 
 function computeTrades(target, pricesNow, holdings, capital, noTradePct, minHoldDays, asOfDate) {
-  // target: [{ticker, weight, rationale, features}]
   const h = new Map();
   for (const x of holdings) h.set(x.ticker, x);
 
@@ -245,18 +248,15 @@ function computeTrades(target, pricesNow, holdings, capital, noTradePct, minHold
   }
   const effectiveCapital = Math.max(capital || 0, totalValue || 0, 0);
 
-  // Current weights
   const curW = new Map();
-  for (const c of current) curW.set(c.ticker, totalValue > 0 ? c.value/totalValue : 0);
+  for (const c of current) curW.set(c.ticker, totalValue > 0 ? c.value / totalValue : 0);
 
-  // Target weights map
   const tgtW = new Map();
   for (const t of target) tgtW.set(t.ticker, t.weight);
 
-  // Universe of tickers we may touch: union
   const all = new Set([...curW.keys(), ...tgtW.keys()]);
-
   const trades = [];
+
   for (const ticker of all) {
     const cw = curW.get(ticker) || 0;
     const tw = tgtW.get(ticker) || 0;
@@ -266,13 +266,11 @@ function computeTrades(target, pricesNow, holdings, capital, noTradePct, minHold
     const price = pricesNow.get(ticker) || 0;
     if (price <= 0) continue;
 
-    // no-trade zone: skip if small change
-    if (absDelta < (noTradePct/100)) continue;
+    if (absDelta < (noTradePct / 100)) continue;
 
-    // min holding period: if selling and not enough days held, skip
     const holding = h.get(ticker);
     if (holding && delta < 0 && holding.lastTradeDate) {
-      const daysHeld = (new Date(asOfDate) - new Date(holding.lastTradeDate)) / (1000*60*60*24);
+      const daysHeld = (new Date(asOfDate) - new Date(holding.lastTradeDate)) / (1000 * 60 * 60 * 24);
       if (daysHeld < minHoldDays) {
         trades.push({
           action: "HOLD",
@@ -288,7 +286,6 @@ function computeTrades(target, pricesNow, holdings, capital, noTradePct, minHold
 
     const dollar = delta * effectiveCapital;
     const rawShares = dollar / price;
-    // For manual, round to whole shares
     const shares = Math.round(rawShares);
     if (shares === 0) continue;
 
@@ -298,44 +295,32 @@ function computeTrades(target, pricesNow, holdings, capital, noTradePct, minHold
       shares: Math.abs(shares),
       price,
       estValue: Math.abs(shares) * price,
-      reason: `Rebalance delta ${(delta*100).toFixed(1)}% (no-trade threshold ${noTradePct}%).`
+      reason: `Rebalance delta ${(delta * 100).toFixed(1)}% (no-trade threshold ${noTradePct}%).`
     });
   }
 
-  // Sort: sells first to fund buys
-  trades.sort((a,b)=> (a.action === "SELL" ? -1 : 1) - (b.action === "SELL" ? -1 : 1));
+  trades.sort((a, b) => (a.action === "SELL" ? -1 : 1) - (b.action === "SELL" ? -1 : 1));
   return { effectiveCapital, totalValue, trades };
 }
 
 async function buildSignals(opts) {
-  const {
-    universe,
-    cadence,
-    topN,
-    minMomentum,
-    defensiveTickers,
-    targetVol,
-    seasonalityWeight
-  } = opts;
+  const { universe, cadence, topN, minMomentum, defensiveTickers, targetVol, seasonalityWeight } = opts;
 
-  // Data horizon: need up to 2y+ for SMA200 and 252 lookbacks
   const endDate = iso(new Date());
-  const startDate = addDays(endDate, -900); // ~3.6y buffer
-  const uniqueTickers = Array.from(new Set([...universe, "SPY"]));
+  const startDate = addDays(endDate, -900);
 
+  const uniqueTickers = Array.from(new Set([...universe, "SPY"]));
   const seriesByTicker = new Map();
-  await Promise.all(uniqueTickers.map(async (t) => {
+
+  await mapLimit(uniqueTickers, 4, async (t) => {
     const s = await tiingoPrices(t, startDate, endDate);
     seriesByTicker.set(t, s);
-  }));
+  });
 
-  // As-of: last common date among universe? Use SPY last date.
   const spy = seriesByTicker.get("SPY");
-  const asOf = spy[spy.length-1].date;
-
+  const asOf = spy[spy.length - 1].date;
   const regime = detectRegime(spy);
 
-  // Compute features per ticker
   const feats = [];
   for (const t of universe) {
     const s = seriesByTicker.get(t);
@@ -347,19 +332,16 @@ async function buildSignals(opts) {
     feats.push({ ticker: t, mom, vol, seas, score: adj });
   }
 
-  // Candidate selection depending on regime
-  const sorted = feats.sort((a,b)=>b.score - a.score);
-
+  const sorted = feats.sort((a, b) => b.score - a.score);
   let selected = [];
   let rationale = "";
+
   if (regime.regime === "risk_off") {
-    // go defensive: rank defensive tickers by score
     const def = sorted.filter(x => defensiveTickers.includes(x.ticker));
     selected = def.slice(0, Math.max(1, Math.min(topN, def.length)));
     rationale = "Risk-off: allocate into defensive leaders (momentum + vol).";
   } else if (regime.regime === "caution") {
-    // mix: half defensive, half top risk
-    const def = sorted.filter(x => defensiveTickers.includes(x.ticker)).slice(0, Math.max(1, Math.floor(topN/2)));
+    const def = sorted.filter(x => defensiveTickers.includes(x.ticker)).slice(0, Math.max(1, Math.floor(topN / 2)));
     const risk = sorted.filter(x => !defensiveTickers.includes(x.ticker)).slice(0, Math.max(1, topN - def.length));
     selected = [...def, ...risk].slice(0, topN);
     rationale = "Caution: blend defensive + top risk assets due to volatility spike.";
@@ -368,7 +350,6 @@ async function buildSignals(opts) {
     rationale = "Risk-on: allocate into top momentum assets (with vol sizing).";
   }
 
-  // Apply minimum momentum gate: if too weak, shift to defensive
   const weak = selected.filter(x => x.score < minMomentum);
   if (weak.length) {
     const fallback = sorted.filter(x => defensiveTickers.includes(x.ticker)).slice(0, topN);
@@ -378,41 +359,34 @@ async function buildSignals(opts) {
     }
   }
 
-  // Vol targeting weights: inverse vol, optionally scaled to a target portfolio vol.
   const baseW = invVolWeights(selected);
-  // Approx portfolio vol of weighted vols (rough): sqrt(sum(w^2 * vol^2))
-  const portVol = Math.sqrt(selected.reduce((s, it, i)=> s + (baseW[i]*baseW[i]*it.vol*it.vol), 0)) || 0;
+  const portVol = Math.sqrt(selected.reduce((s, it, i) => s + (baseW[i] * baseW[i] * it.vol * it.vol), 0)) || 0;
   const scale = (portVol > 0 && targetVol > 0) ? clamp(targetVol / portVol, 0.5, 1.25) : 1;
   const scaledW = baseW.map(w => w * scale);
-  const sumW = scaledW.reduce((a,b)=>a+b,0) || 1;
-  const finalW = scaledW.map(w => w/sumW);
+  const sumW = scaledW.reduce((a, b) => a + b, 0) || 1;
+  const finalW = scaledW.map(w => w / sumW);
 
   const target = selected.map((it, i) => ({
     ticker: it.ticker,
     weight: Number(finalW[i].toFixed(4)),
     vol: Number(it.vol.toFixed(4)),
     score: Number(it.score.toFixed(6)),
-    mom: {
-      r21: it.mom.r21, r63: it.mom.r63, r126: it.mom.r126, r252: it.mom.r252,
-      accel: it.mom.accel
-    },
+    mom: { r21: it.mom.r21, r63: it.mom.r63, r126: it.mom.r126, r252: it.mom.r252, accel: it.mom.accel },
     seasonality: Number(it.seas.toFixed(6)),
-    rationale: rationale
+    rationale
   }));
 
-  // Hold-time estimate (rough): median persistence of positive score historically, last 5y
-  // This is compute-heavy; do a cheap proxy: convert score into a days band.
   const holdEstimateDays = selected.length
     ? Math.round(clamp(12 + (selected[0].score * 180), 10, 90))
     : 21;
 
   const nextReb = nextRebalanceDate(asOf, cadence);
-
   return { asOf, regime, target, nextRebalance: nextReb, holdEstimateDays, seriesByTicker };
 }
 
+// ---- Backtest helpers (unchanged from your file, but kept intact) ----
+
 function pickRebalanceDates(commonDates, cadence) {
-  // commonDates sorted ISO strings
   const dates = commonDates.slice().sort();
   if (dates.length < 10) return [];
 
@@ -421,7 +395,7 @@ function pickRebalanceDates(commonDates, cadence) {
     let curYM = null;
     let lastInMonth = null;
     for (const d of dates) {
-      const ym = d.slice(0,7);
+      const ym = d.slice(0, 7);
       if (curYM === null) { curYM = ym; lastInMonth = d; continue; }
       if (ym !== curYM) {
         out.push(lastInMonth);
@@ -433,19 +407,17 @@ function pickRebalanceDates(commonDates, cadence) {
     return out;
   }
 
-  // weekly: take Fridays if present; else last date each ISO week
   const out = [];
   let curWeek = null;
   let lastInWeek = null;
 
   function isoWeekKey(d) {
-    const dt = new Date(d+"T00:00:00Z");
-    // ISO week computation
+    const dt = new Date(d + "T00:00:00Z");
     const tmp = new Date(Date.UTC(dt.getUTCFullYear(), dt.getUTCMonth(), dt.getUTCDate()));
-    tmp.setUTCDate(tmp.getUTCDate() + 4 - (tmp.getUTCDay()||7));
-    const yearStart = new Date(Date.UTC(tmp.getUTCFullYear(),0,1));
-    const weekNo = Math.ceil((((tmp - yearStart) / 86400000) + 1)/7);
-    return `${tmp.getUTCFullYear()}-W${String(weekNo).padStart(2,"0")}`;
+    tmp.setUTCDate(tmp.getUTCDate() + 4 - (tmp.getUTCDay() || 7));
+    const yearStart = new Date(Date.UTC(tmp.getUTCFullYear(), 0, 1));
+    const weekNo = Math.ceil((((tmp - yearStart) / 86400000) + 1) / 7);
+    return `${tmp.getUTCFullYear()}-W${String(weekNo).padStart(2, "0")}`;
   }
 
   for (const d of dates) {
@@ -462,10 +434,9 @@ function pickRebalanceDates(commonDates, cadence) {
 }
 
 function alignSeries(seriesByTicker, tickers) {
-  // Intersect dates across tickers, return map ticker->(date->close) and common date list.
-  const dateSets = tickers.map(t => new Set((seriesByTicker.get(t)||[]).map(r=>r.date)));
+  const dateSets = tickers.map(t => new Set((seriesByTicker.get(t) || []).map(r => r.date)));
   let common = dateSets[0];
-  for (let i=1;i<dateSets.length;i++) {
+  for (let i = 1; i < dateSets.length; i++) {
     const next = new Set();
     for (const d of common) if (dateSets[i].has(d)) next.add(d);
     common = next;
@@ -474,22 +445,20 @@ function alignSeries(seriesByTicker, tickers) {
   const closeMap = new Map();
   for (const t of tickers) {
     const m = new Map();
-    for (const r of (seriesByTicker.get(t)||[])) if (common.has(r.date)) m.set(r.date, r.close);
+    for (const r of (seriesByTicker.get(t) || [])) if (common.has(r.date)) m.set(r.date, r.close);
     closeMap.set(t, m);
   }
   return { commonDates, closeMap };
 }
 
 function buildWindowSeries(series, endDate, lookbackDays) {
-  // series is array {date,close} sorted; return slice up to endDate inclusive, last lookbackDays+10 points.
   const idx = series.findIndex(r => r.date === endDate);
-  const endIdx = idx >= 0 ? idx : series.length-1;
+  const endIdx = idx >= 0 ? idx : series.length - 1;
   const startIdx = Math.max(0, endIdx - (lookbackDays + 20));
-  return series.slice(startIdx, endIdx+1);
+  return series.slice(startIdx, endIdx + 1);
 }
 
 function computeWeightsAtDate(date, seriesByTicker, universe, opts) {
-  // build features using data up to 'date'
   const spySeries = buildWindowSeries(seriesByTicker.get("SPY"), date, 400);
   const regime = detectRegime(spySeries);
 
@@ -503,13 +472,13 @@ function computeWeightsAtDate(date, seriesByTicker, universe, opts) {
     const adj = mom.score + (opts.seasonalityWeight * seas);
     feats.push({ ticker: t, mom, vol, seas, score: adj });
   }
-  feats.sort((a,b)=>b.score - a.score);
+  feats.sort((a, b) => b.score - a.score);
 
   let selected = [];
   if (regime.regime === "risk_off") {
     selected = feats.filter(x => opts.defensiveTickers.includes(x.ticker)).slice(0, opts.topN);
   } else if (regime.regime === "caution") {
-    const def = feats.filter(x => opts.defensiveTickers.includes(x.ticker)).slice(0, Math.max(1, Math.floor(opts.topN/2)));
+    const def = feats.filter(x => opts.defensiveTickers.includes(x.ticker)).slice(0, Math.max(1, Math.floor(opts.topN / 2)));
     const risk = feats.filter(x => !opts.defensiveTickers.includes(x.ticker)).slice(0, Math.max(1, opts.topN - def.length));
     selected = [...def, ...risk].slice(0, opts.topN);
   } else {
@@ -522,11 +491,11 @@ function computeWeightsAtDate(date, seriesByTicker, universe, opts) {
   }
 
   const baseW = invVolWeights(selected);
-  const portVol = Math.sqrt(selected.reduce((s, it, i)=> s + (baseW[i]*baseW[i]*it.vol*it.vol), 0)) || 0;
+  const portVol = Math.sqrt(selected.reduce((s, it, i) => s + (baseW[i] * baseW[i] * it.vol * it.vol), 0)) || 0;
   const scale = (portVol > 0 && opts.targetVol > 0) ? clamp(opts.targetVol / portVol, 0.5, 1.25) : 1;
   const scaledW = baseW.map(w => w * scale);
-  const sumW = scaledW.reduce((a,b)=>a+b,0) || 1;
-  const w = scaledW.map(x => x/sumW);
+  const sumW = scaledW.reduce((a, b) => a + b, 0) || 1;
+  const w = scaledW.map(x => x / sumW);
 
   const weights = new Map();
   selected.forEach((it, i) => weights.set(it.ticker, w[i]));
@@ -536,8 +505,7 @@ function computeWeightsAtDate(date, seriesByTicker, universe, opts) {
 function backtest(seriesByTicker, universe, opts) {
   const tickers = Array.from(new Set(["SPY", ...universe]));
   const { commonDates, closeMap } = alignSeries(seriesByTicker, tickers);
-  // Choose date range with enough lookback
-  const startIdx = 260; // after ~1 year
+  const startIdx = 260;
   const dates = commonDates.slice(startIdx);
   const rebDates = new Set(pickRebalanceDates(dates, opts.cadence));
 
@@ -547,46 +515,40 @@ function backtest(seriesByTicker, universe, opts) {
   const curveSPY = [];
   const daily = [];
 
-  let weights = new Map(); // ticker->weight
-  let lastRebWeights = new Map();
+  let weights = new Map();
   let trades = 0;
   let turnoverSum = 0;
 
-  for (let i=1;i<dates.length;i++) {
-    const dPrev = dates[i-1];
+  for (let i = 1; i < dates.length; i++) {
+    const dPrev = dates[i - 1];
     const d = dates[i];
 
     if (rebDates.has(d)) {
       const wAt = computeWeightsAtDate(d, seriesByTicker, universe, opts).weights;
-      // turnover = 0.5 * sum |w_new - w_old|
       let turnover = 0;
       const all = new Set([...weights.keys(), ...wAt.keys()]);
-      for (const t of all) turnover += Math.abs((wAt.get(t)||0) - (weights.get(t)||0));
+      for (const t of all) turnover += Math.abs((wAt.get(t) || 0) - (weights.get(t) || 0));
       turnover *= 0.5;
       turnoverSum += turnover;
       if (turnover > 0.0001) trades += 1;
 
-      // slippage cost
-      const slip = (opts.slippageBps/10000) * turnover; // applied to equity
+      const slip = (opts.slippageBps / 10000) * turnover;
       equitySSE *= (1 - slip);
 
-      lastRebWeights = weights;
       weights = wAt;
     }
 
-    // SSE daily return: sum w_i * r_i
     let r = 0;
     for (const [t, w] of weights.entries()) {
       const pxPrev = closeMap.get(t).get(dPrev);
       const px = closeMap.get(t).get(d);
-      if (pxPrev && px) r += w * (px/pxPrev - 1);
+      if (pxPrev && px) r += w * (px / pxPrev - 1);
     }
     equitySSE *= (1 + r);
 
-    // SPY buy&hold
     const spyPrev = closeMap.get("SPY").get(dPrev);
     const spyNow = closeMap.get("SPY").get(d);
-    const rSpy = (spyPrev && spyNow) ? (spyNow/spyPrev - 1) : 0;
+    const rSpy = (spyPrev && spyNow) ? (spyNow / spyPrev - 1) : 0;
     equitySPY *= (1 + rSpy);
 
     curve.push(equitySSE);
@@ -594,31 +556,31 @@ function backtest(seriesByTicker, universe, opts) {
     daily.push({ date: d, sse: equitySSE, spy: equitySPY });
   }
 
-  // metrics
   const totalDays = daily.length || 1;
   const years = totalDays / 252;
-  const cagrSSE = Math.pow(curve[curve.length-1] || 1, 1/Math.max(0.0001, years)) - 1;
-  const cagrSPY = Math.pow(curveSPY[curveSPY.length-1] || 1, 1/Math.max(0.0001, years)) - 1;
+  const cagrSSE = Math.pow(curve[curve.length - 1] || 1, 1 / Math.max(0.0001, years)) - 1;
+  const cagrSPY = Math.pow(curveSPY[curveSPY.length - 1] || 1, 1 / Math.max(0.0001, years)) - 1;
 
   const sseR = [];
   const spyR = [];
-  for (let i=1;i<daily.length;i++) {
-    sseR.push(daily[i].sse/daily[i-1].sse - 1);
-    spyR.push(daily[i].spy/daily[i-1].spy - 1);
+  for (let i = 1; i < daily.length; i++) {
+    sseR.push(daily[i].sse / daily[i - 1].sse - 1);
+    spyR.push(daily[i].spy / daily[i - 1].spy - 1);
   }
-  const volSSE = stdev(sseR)*Math.sqrt(252);
-  const volSPY = stdev(spyR)*Math.sqrt(252);
-  const sharpeSSE = volSSE>0 ? (mean(sseR)*252) / volSSE : 0;
-  const sharpeSPY = volSPY>0 ? (mean(spyR)*252) / volSPY : 0;
+
+  const volSSE = stdev(sseR) * Math.sqrt(252);
+  const volSPY = stdev(spyR) * Math.sqrt(252);
+  const sharpeSSE = volSSE > 0 ? (mean(sseR) * 252) / volSSE : 0;
+  const sharpeSPY = volSPY > 0 ? (mean(spyR) * 252) / volSPY : 0;
 
   const mddSSE = maxDrawdown(curve);
   const mddSPY = maxDrawdown(curveSPY);
 
   const metrics = {
-    period: { start: daily[0]?.date || null, end: daily[daily.length-1]?.date || null, years: Number(years.toFixed(2)) },
-    sse: { totalReturn: (curve[curve.length-1]||1)-1, cagr: cagrSSE, vol: volSSE, sharpe: sharpeSSE, maxDrawdown: mddSSE },
-    spy: { totalReturn: (curveSPY[curveSPY.length-1]||1)-1, cagr: cagrSPY, vol: volSPY, sharpe: sharpeSPY, maxDrawdown: mddSPY },
-    activity: { rebalances: trades, avgTurnover: trades ? (turnoverSum/trades) : turnoverSum, slippageBps: opts.slippageBps }
+    period: { start: daily[0]?.date || null, end: daily[daily.length - 1]?.date || null, years: Number(years.toFixed(2)) },
+    sse: { totalReturn: (curve[curve.length - 1] || 1) - 1, cagr: cagrSSE, vol: volSSE, sharpe: sharpeSSE, maxDrawdown: mddSSE },
+    spy: { totalReturn: (curveSPY[curveSPY.length - 1] || 1) - 1, cagr: cagrSPY, vol: volSPY, sharpe: sharpeSPY, maxDrawdown: mddSPY },
+    activity: { rebalances: trades, avgTurnover: trades ? (turnoverSum / trades) : turnoverSum, slippageBps: opts.slippageBps }
   };
 
   return { daily, metrics };
@@ -628,34 +590,44 @@ function defaultUniverse(mode) {
   if (mode === "stocks") {
     return ["AAPL","MSFT","NVDA","AMZN","GOOGL","META","TSLA","JPM","XOM","UNH","COST","AVGO","LLY","PEP","HD"];
   }
-  // ETF rotation preset (signal-to-noise > single stocks)
   return ["SPY","QQQ","IWM","EFA","EEM","TLT","IEF","GLD","DBC","VNQ"];
 }
 
 function defaultDefensive(universe) {
   const set = new Set(universe);
-  // prefer from universe; fall back to common defensive proxies
   const candidates = ["TLT","IEF","SHY","GLD","USMV","SPLV"];
   const out = candidates.filter(t => set.has(t));
-  return out.length ? out : ["TLT","IEF","GLD"].filter(t=>set.has(t) || true);
+  if (out.length) return out;
+  // If user universe doesn't contain known defensive assets, fall back to "first few" tickers.
+  return universe.slice(0, Math.min(3, universe.length));
 }
 
-app.get("/api/health", (req,res) => {
+app.get("/api/health", (req, res) => {
   res.json({ ok: true, time: new Date().toISOString(), hasTiingoToken: Boolean(TIINGO_TOKEN) });
 });
 
-app.post("/api/plan", async (req,res,next) => {
+app.post("/api/plan", async (req, res, next) => {
   try {
     const body = req.body || {};
     const universeMode = (body.universeMode || "etf").toLowerCase();
     const customTickers = Array.isArray(body.customTickers) ? body.customTickers : [];
-    const universe = (universeMode === "custom")
-      ? customTickers.map(t=>String(t).toUpperCase().trim()).filter(Boolean)
-      : defaultUniverse(universeMode === "stocks" ? "stocks" : "etf").filter(t=>t!=="SPY"); // SPY reserved for regime/benchmark
 
-    const cadence = (body.cadence || "weekly").toLowerCase(); // weekly|monthly
-    const topN = clamp(Number(body.topN || (universeMode==="stocks"?5:3)), 1, 8);
-    const minMomentum = Number(body.minMomentum ?? 0); // log-return score gate
+    let universe = (universeMode === "custom")
+      ? customTickers.map(t => String(t).toUpperCase().trim()).filter(Boolean)
+      : defaultUniverse(universeMode === "stocks" ? "stocks" : "etf");
+
+    // SPY is reserved for regime/benchmark. Never allow it in the traded universe.
+    universe = Array.from(new Set(universe)).filter(t => t && t !== "SPY");
+
+    if (!universe.length) {
+      const err = new Error("Universe is empty. Provide custom tickers or choose a preset.");
+      err.status = 400;
+      throw err;
+    }
+
+    const cadence = (body.cadence || "weekly").toLowerCase();
+    const topN = clamp(Number(body.topN || (universeMode === "stocks" ? 5 : 3)), 1, 8);
+    const minMomentum = Number(body.minMomentum ?? 0);
     const targetVol = clamp(Number(body.targetVol ?? 0.12), 0.05, 0.30);
     const seasonalityWeight = clamp(Number(body.seasonalityWeight ?? 0.05), 0, 0.20);
     const slippageBps = clamp(Number(body.slippageBps ?? 5), 0, 50);
@@ -668,27 +640,30 @@ app.post("/api/plan", async (req,res,next) => {
     const holdingsText = String(body.holdingsCsv || "");
     const holdings = normalizeHoldings(parseHoldingsCSV(holdingsText));
 
-    const defensiveTickers = Array.isArray(body.defensiveTickers) && body.defensiveTickers.length
-      ? body.defensiveTickers.map(t=>String(t).toUpperCase().trim()).filter(Boolean)
+    let defensiveTickers = Array.isArray(body.defensiveTickers) && body.defensiveTickers.length
+      ? body.defensiveTickers.map(t => String(t).toUpperCase().trim()).filter(Boolean)
       : defaultDefensive(universe);
+
+    // Defensive tickers must be a subset of the universe.
+    const uSet = new Set(universe);
+    defensiveTickers = defensiveTickers.filter(t => uSet.has(t));
+    if (!defensiveTickers.length) defensiveTickers = defaultDefensive(universe);
 
     const opts = { universe, cadence, topN, minMomentum, defensiveTickers, targetVol, seasonalityWeight, slippageBps };
 
     const signals = await buildSignals(opts);
 
-    // Build a map of latest prices for trade sizing
     const pricesNow = new Map();
     for (const t of universe) {
       const s = signals.seriesByTicker.get(t);
       if (!s || !s.length) continue;
-      const last = s[s.length-1];
-      pricesNow.set(t, last.close);
+      pricesNow.set(t, s[s.length - 1].close);
     }
 
     const tradePlan = computeTrades(signals.target, pricesNow, holdings, capital, noTradePct, minHoldDays, signals.asOf);
 
-    // Backtest panel (walk-forward)
-    const bt = backtest(signals.seriesByTicker, universe, { ...opts, slippageBps });
+    // Walk-forward backtest (uses same opts)
+    const bt = backtest(signals.seriesByTicker, universe, opts);
 
     res.json({
       asOf: signals.asOf,
@@ -708,7 +683,23 @@ app.post("/api/plan", async (req,res,next) => {
   }
 });
 
-app.use(express.static(path.join(__dirname, "public")));
+// ---- Static/UI serving (works with /public OR root index.html) ----
+const publicDir = path.join(__dirname, "public");
+const publicIndex = path.join(publicDir, "index.html");
+const rootIndex = path.join(__dirname, "index.html");
+
+const hasPublicDir = fs.existsSync(publicDir);
+const hasPublicIndex = fs.existsSync(publicIndex);
+const hasRootIndex = fs.existsSync(rootIndex);
+
+if (hasPublicDir) app.use(express.static(publicDir));
+app.use(express.static(__dirname)); // also allow root assets if you keep them there
+
+app.get("/", (req, res) => {
+  if (hasPublicIndex) return res.sendFile(publicIndex);
+  if (hasRootIndex) return res.sendFile(rootIndex);
+  res.status(404).send("Missing index.html. Put it in /public/index.html or ./index.html");
+});
 
 app.use((err, req, res, next) => {
   const status = err.status || 500;
@@ -716,7 +707,7 @@ app.use((err, req, res, next) => {
     ok: false,
     error: err.message || "Unknown error",
     status,
-    hint: status === 400 && String(err.message||"").includes("TIINGO_TOKEN")
+    hint: status === 400 && String(err.message || "").includes("TIINGO_TOKEN")
       ? "Set TIINGO_TOKEN in Render Environment > Environment Variables."
       : undefined
   });
