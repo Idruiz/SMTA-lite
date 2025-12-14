@@ -1,0 +1,17 @@
+{
+  "name": "smta-signal-engine",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Actionable, deployable signal + allocation engine with benchmark panel (SPY vs SSE).",
+  "main": "server.js",
+  "type": "module",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.19.2"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
