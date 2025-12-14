@@ -1,0 +1,652 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>SMTA Signal Engine</title>
+  <style>
+    :root{
+      --bg1:#f6f7ff;
+      --bg2:#fff5f2;
+      --card:#ffffff;
+      --ink:#101223;
+      --muted:#5b637a;
+      --border:rgba(16,18,35,.12);
+      --shadow:0 12px 30px rgba(16,18,35,.10);
+      --brand1:#5b6cff;
+      --brand2:#ff4d6d;
+      --brand3:#00c2a8;
+      --warn:#ffb020;
+      --bad:#ff3b30;
+      --good:#2ecc71;
+      --chip:#f2f4ff;
+      --mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+      --radius:18px;
+    }
+    *{box-sizing:border-box}
+    body{
+      margin:0;
+      font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "Apple Color Emoji","Segoe UI Emoji";
+      color:var(--ink);
+      background:
+        radial-gradient(1200px 600px at 10% -10%, rgba(91,108,255,.20), transparent 60%),
+        radial-gradient(900px 500px at 95% 0%, rgba(255,77,109,.18), transparent 60%),
+        radial-gradient(900px 500px at 55% 110%, rgba(0,194,168,.18), transparent 60%),
+        linear-gradient(180deg, var(--bg1), var(--bg2));
+      min-height:100vh;
+    }
+    header{
+      padding:28px 18px 10px;
+      max-width:1180px;
+      margin:0 auto;
+      display:flex;
+      gap:14px;
+      align-items:flex-end;
+      justify-content:space-between;
+    }
+    .title h1{
+      margin:0;
+      font-size:26px;
+      letter-spacing:.2px;
+      line-height:1.1;
+    }
+    .title p{
+      margin:8px 0 0;
+      color:var(--muted);
+      max-width:820px;
+      line-height:1.35;
+    }
+    .pill{
+      display:inline-flex;
+      align-items:center;
+      gap:8px;
+      padding:10px 12px;
+      border:1px solid var(--border);
+      background:rgba(255,255,255,.7);
+      backdrop-filter: blur(8px);
+      border-radius:999px;
+      box-shadow:0 8px 16px rgba(16,18,35,.06);
+      color:var(--muted);
+      font-size:13px;
+      white-space:nowrap;
+    }
+    .dot{width:9px;height:9px;border-radius:999px;background:var(--brand1)}
+    main{
+      max-width:1180px;
+      margin:0 auto;
+      padding:10px 18px 40px;
+      display:grid;
+      grid-template-columns: 420px 1fr;
+      gap:18px;
+    }
+    @media (max-width: 980px){
+      main{grid-template-columns:1fr}
+    }
+    .card{
+      background:rgba(255,255,255,.86);
+      border:1px solid var(--border);
+      border-radius:var(--radius);
+      box-shadow:var(--shadow);
+      padding:16px;
+    }
+    .card h2{
+      margin:0 0 10px;
+      font-size:16px;
+    }
+    .grid2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+    .grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+    label{
+      display:block;
+      font-size:12px;
+      color:var(--muted);
+      margin:10px 0 6px;
+    }
+    input, select, textarea{
+      width:100%;
+      border:1px solid var(--border);
+      border-radius:14px;
+      padding:10px 12px;
+      font-size:14px;
+      background:#fff;
+      color:var(--ink);
+      outline:none;
+      box-shadow: 0 6px 16px rgba(16,18,35,.04);
+    }
+    textarea{min-height:110px; font-family:var(--mono); font-size:12px; line-height:1.35}
+    input:focus, select:focus, textarea:focus{
+      border-color: rgba(91,108,255,.55);
+      box-shadow: 0 0 0 5px rgba(91,108,255,.14), 0 10px 24px rgba(16,18,35,.06);
+    }
+    .btnRow{display:flex;gap:10px;margin-top:12px;flex-wrap:wrap}
+    button{
+      border:0;
+      border-radius:14px;
+      padding:11px 14px;
+      font-weight:700;
+      cursor:pointer;
+      box-shadow:0 10px 20px rgba(16,18,35,.08);
+      transition: transform .08s ease, box-shadow .12s ease, opacity .12s ease;
+      font-size:14px;
+    }
+    button:active{transform: translateY(1px); box-shadow:0 6px 14px rgba(16,18,35,.08)}
+    .primary{
+      background: linear-gradient(90deg, var(--brand1), var(--brand2));
+      color:white;
+    }
+    .ghost{
+      background:rgba(255,255,255,.75);
+      border:1px solid var(--border);
+      color:var(--ink);
+    }
+    .chipRow{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
+    .chip{
+      background:var(--chip);
+      border:1px solid rgba(91,108,255,.18);
+      color:#2a2f55;
+      padding:7px 10px;
+      border-radius:999px;
+      font-size:12px;
+    }
+    .warn{border-color: rgba(255,176,32,.35); background: rgba(255,176,32,.12)}
+    .good{border-color: rgba(46,204,113,.35); background: rgba(46,204,113,.10)}
+    .bad{border-color: rgba(255,59,48,.35); background: rgba(255,59,48,.10)}
+    .muted{color:var(--muted)}
+    .kpiGrid{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}
+    @media (max-width: 980px){ .kpiGrid{grid-template-columns:repeat(2,1fr)} }
+    .kpi{
+      border:1px solid var(--border);
+      border-radius:16px;
+      padding:12px;
+      background:rgba(255,255,255,.8);
+    }
+    .kpi .label{font-size:12px;color:var(--muted)}
+    .kpi .value{font-size:18px;font-weight:800;margin-top:6px}
+    .table{
+      width:100%;
+      border-collapse:separate;
+      border-spacing:0;
+      overflow:hidden;
+      border-radius:16px;
+      border:1px solid var(--border);
+      background:#fff;
+    }
+    .table th, .table td{
+      padding:10px 10px;
+      border-bottom:1px solid rgba(16,18,35,.08);
+      font-size:13px;
+      text-align:left;
+      vertical-align:top;
+    }
+    .table th{font-size:12px;color:var(--muted);background:rgba(246,247,255,.8)}
+    .table tr:last-child td{border-bottom:0}
+    .rightCol{display:flex;flex-direction:column;gap:18px}
+    .split{
+      display:grid;
+      grid-template-columns:1fr 1fr;
+      gap:12px;
+    }
+    @media (max-width: 980px){ .split{grid-template-columns:1fr} }
+    .canvasWrap{
+      border:1px solid var(--border);
+      border-radius:16px;
+      overflow:hidden;
+      background:#fff;
+      padding:8px;
+    }
+    canvas{width:100%; height:280px;}
+    .small{font-size:12px}
+    .err{
+      margin-top:10px;
+      padding:10px 12px;
+      border-radius:16px;
+      border:1px solid rgba(255,59,48,.28);
+      background:rgba(255,59,48,.10);
+      color:#8a1a12;
+      display:none;
+    }
+    .ok{
+      margin-top:10px;
+      padding:10px 12px;
+      border-radius:16px;
+      border:1px solid rgba(46,204,113,.28);
+      background:rgba(46,204,113,.10);
+      color:#145a32;
+      display:none;
+    }
+    .footerNote{
+      margin-top:10px;
+      font-size:12px;
+      color:var(--muted);
+      line-height:1.35;
+    }
+    .tinyLink{
+      color: var(--brand1);
+      text-decoration:none;
+      font-weight:700;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="title">
+      <h1>SMTA Signal Engine</h1>
+      <p>
+        A deployable, EOD-based signal + allocation engine that outputs an actionable plan (what to buy/sell, sizing, rebalance cadence)
+        and a walk-forward benchmark panel (<b>SSE vs SPY</b>) with a simple slippage model.
+      </p>
+    </div>
+    <div class="pill" id="healthPill"><span class="dot"></span><span id="healthText">Checking backend…</span></div>
+  </header>
+
+  <main>
+    <section class="card">
+      <h2>1) Configure</h2>
+      <div class="grid2">
+        <div>
+          <label>Universe</label>
+          <select id="universeMode">
+            <option value="etf">ETF Rotation (recommended)</option>
+            <option value="stocks">Large-cap Stocks (noisier)</option>
+            <option value="custom">Custom tickers</option>
+          </select>
+        </div>
+        <div>
+          <label>Cadence</label>
+          <select id="cadence">
+            <option value="weekly">Weekly (signal reacts faster)</option>
+            <option value="monthly">Monthly (often steadier)</option>
+          </select>
+        </div>
+      </div>
+
+      <div id="customTickersWrap" style="display:none;">
+        <label>Custom tickers (comma-separated)</label>
+        <input id="customTickers" placeholder="e.g., SPY, QQQ, IEF, GLD, XOM, AAPL" />
+      </div>
+
+      <div class="grid3">
+        <div>
+          <label>Capital (CAD/USD doesn’t matter)</label>
+          <input id="capital" type="number" value="100000" min="0" step="1000" />
+        </div>
+        <div>
+          <label>Top N assets</label>
+          <input id="topN" type="number" value="3" min="1" max="8" />
+        </div>
+        <div>
+          <label>No-trade zone (% weight change)</label>
+          <input id="noTradePct" type="number" value="5" min="0" max="25" step="0.5" />
+        </div>
+      </div>
+
+      <div class="grid3">
+        <div>
+          <label>Min holding period (days)</label>
+          <input id="minHoldDays" type="number" value="10" min="0" max="90" />
+        </div>
+        <div>
+          <label>Target portfolio vol (annual)</label>
+          <input id="targetVol" type="number" value="0.12" min="0.05" max="0.30" step="0.01" />
+        </div>
+        <div>
+          <label>Slippage (bps per turnover)</label>
+          <input id="slippageBps" type="number" value="5" min="0" max="50" step="1" />
+        </div>
+      </div>
+
+      <div class="grid2">
+        <div>
+          <label>Minimum momentum gate (score)</label>
+          <input id="minMomentum" type="number" value="0" step="0.01" />
+          <div class="footerNote">0 means “must be non-negative” by default. Raising this reduces trades but may miss rebounds.</div>
+        </div>
+        <div>
+          <label>Seasonality weight</label>
+          <input id="seasonalityWeight" type="number" value="0.05" min="0" max="0.20" step="0.01" />
+          <div class="footerNote">Small by design. Seasonality is real-ish but noisy.</div>
+        </div>
+      </div>
+
+      <h2 style="margin-top:16px;">2) Optional: paste current holdings</h2>
+      <div class="muted small">CSV format (headers optional): <span class="chip">ticker,shares,avgCost,lastTradeDate</span></div>
+      <label>Holdings CSV</label>
+      <textarea id="holdingsCsv" placeholder="ticker,shares,avgCost,lastTradeDate
+SPY,10,450,2025-11-10
+QQQ,5,390,2025-11-24"></textarea>
+
+      <div class="btnRow">
+        <button class="primary" id="runBtn">Generate Plan + Benchmark</button>
+        <button class="ghost" id="downloadBtn" disabled>Download Plan JSON</button>
+        <button class="ghost" id="downloadCsvBtn" disabled>Download Trades CSV</button>
+      </div>
+
+      <div class="err" id="errBox"></div>
+      <div class="ok" id="okBox"></div>
+
+      <div class="footerNote">
+        Backend must have <b>TIINGO_TOKEN</b> set. If the health pill is red, the server can’t fetch.
+      </div>
+    </section>
+
+    <section class="rightCol">
+      <section class="card">
+        <h2>Today’s Snapshot</h2>
+        <div class="kpiGrid">
+          <div class="kpi"><div class="label">As of</div><div class="value" id="k_asof">—</div></div>
+          <div class="kpi"><div class="label">Regime</div><div class="value" id="k_regime">—</div></div>
+          <div class="kpi"><div class="label">Next rebalance</div><div class="value" id="k_next">—</div></div>
+          <div class="kpi"><div class="label">Hold estimate</div><div class="value" id="k_hold">—</div></div>
+        </div>
+        <div class="chipRow" id="chipRow"></div>
+      </section>
+
+      <section class="card split">
+        <div>
+          <h2>Target Allocation</h2>
+          <table class="table" id="allocTable">
+            <thead><tr><th>Ticker</th><th>Weight</th><th>Score</th><th>Vol</th></tr></thead>
+            <tbody><tr><td colspan="4" class="muted">Run the engine…</td></tr></tbody>
+          </table>
+        </div>
+        <div>
+          <h2>Trades (vs holdings)</h2>
+          <table class="table" id="tradeTable">
+            <thead><tr><th>Action</th><th>Ticker</th><th>Shares</th><th>Est $</th><th>Reason</th></tr></thead>
+            <tbody><tr><td colspan="5" class="muted">Paste holdings (optional) and run…</td></tr></tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="card">
+        <h2>Benchmark Panel: SSE vs SPY</h2>
+        <div class="canvasWrap"><canvas id="chart" width="1000" height="320"></canvas></div>
+        <div class="split" style="margin-top:12px;">
+          <div>
+            <h2>Metrics (SSE)</h2>
+            <table class="table" id="mSse"></table>
+          </div>
+          <div>
+            <h2>Metrics (SPY)</h2>
+            <table class="table" id="mSpy"></table>
+          </div>
+        </div>
+        <div class="footerNote">
+          This benchmark is walk-forward (no lookahead), but still simplified (EOD, no dividends modelling beyond adjusted prices, no taxes).
+          If you want, I can add dividend cashflows + better turnover tracking next.
+        </div>
+      </section>
+    </section>
+  </main>
+
+  <script>
+    const el = (id) => document.getElementById(id);
+    const fmtPct = (x) => (x*100).toFixed(1) + "%";
+    const fmtNum = (x) => (Number(x)||0).toFixed(2);
+    const fmtMoney = (x) => "$" + (Number(x)||0).toLocaleString(undefined,{maximumFractionDigits:0});
+
+    const state = { lastPlan: null };
+
+    function showErr(msg){
+      el("errBox").style.display = "block";
+      el("errBox").textContent = msg;
+      el("okBox").style.display = "none";
+    }
+    function showOk(msg){
+      el("okBox").style.display = "block";
+      el("okBox").textContent = msg;
+      el("errBox").style.display = "none";
+    }
+
+    async function health(){
+      try{
+        const r = await fetch("/api/health");
+        const j = await r.json();
+        const ok = j.ok && j.hasTiingoToken;
+        el("healthText").textContent = ok ? "Backend ready (Tiingo token set)" : "Backend needs TIINGO_TOKEN";
+        el("healthPill").querySelector(".dot").style.background = ok ? "var(--good)" : "var(--bad)";
+      }catch(e){
+        el("healthText").textContent = "Backend offline";
+        el("healthPill").querySelector(".dot").style.background = "var(--bad)";
+      }
+    }
+
+    function drawChart(points){
+      const c = el("chart");
+      const ctx = c.getContext("2d");
+      const w = c.width, h = c.height;
+
+      ctx.clearRect(0,0,w,h);
+
+      if(!points || points.length < 10){
+        ctx.font = "14px ui-sans-serif";
+        ctx.fillStyle = "#5b637a";
+        ctx.fillText("Run the engine to draw the benchmark.", 18, 40);
+        return;
+      }
+
+      const pad = 45;
+      const xs = points.map((_,i)=>i);
+      const ys1 = points.map(p=>p.sse);
+      const ys2 = points.map(p=>p.spy);
+      const all = ys1.concat(ys2);
+
+      const minY = Math.min(...all);
+      const maxY = Math.max(...all);
+      const span = (maxY-minY) || 1;
+
+      // axes
+      ctx.strokeStyle = "rgba(16,18,35,.12)";
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(pad, pad-8);
+      ctx.lineTo(pad, h-pad);
+      ctx.lineTo(w-pad+8, h-pad);
+      ctx.stroke();
+
+      // y labels
+      ctx.fillStyle = "#5b637a";
+      ctx.font = "12px ui-sans-serif";
+      for(let k=0;k<=4;k++){
+        const yv = minY + span*(k/4);
+        const y = h-pad - (k/4)*(h-2*pad);
+        ctx.fillText(yv.toFixed(2)+"x", 10, y+4);
+        ctx.strokeStyle = "rgba(16,18,35,.06)";
+        ctx.beginPath();
+        ctx.moveTo(pad, y);
+        ctx.lineTo(w-pad, y);
+        ctx.stroke();
+      }
+
+      const xTo = (i)=> pad + (i/(xs.length-1))*(w-2*pad);
+      const yTo = (v)=> h-pad - ((v-minY)/span)*(h-2*pad);
+
+      function drawLine(vals, stroke){
+        ctx.strokeStyle = stroke;
+        ctx.lineWidth = 2.2;
+        ctx.beginPath();
+        vals.forEach((v,i)=>{
+          const x=xTo(i), y=yTo(v);
+          if(i===0) ctx.moveTo(x,y); else ctx.lineTo(x,y);
+        });
+        ctx.stroke();
+      }
+
+      drawLine(ys2, "#5b6cff"); // SPY
+      drawLine(ys1, "#ff4d6d"); // SSE
+
+      // legend
+      ctx.fillStyle = "#101223";
+      ctx.font = "12px ui-sans-serif";
+      ctx.fillText("SPY", w-pad-110, pad);
+      ctx.fillText("SSE", w-pad-60, pad);
+      ctx.fillStyle = "#5b6cff";
+      ctx.fillRect(w-pad-128, pad-9, 10, 10);
+      ctx.fillStyle = "#ff4d6d";
+      ctx.fillRect(w-pad-78, pad-9, 10, 10);
+    }
+
+    function setMetrics(tableId, obj){
+      const t = el(tableId);
+      const rows = [];
+      for(const [k,v] of Object.entries(obj)){
+        let val = v;
+        if(typeof v === "number"){
+          if(k.toLowerCase().includes("drawdown") || k.toLowerCase().includes("cagr") || k.toLowerCase().includes("return") || k.toLowerCase().includes("vol")){
+            val = fmtPct(v);
+          } else {
+            val = v.toFixed(2);
+          }
+        }
+        rows.push(`<tr><th>${k}</th><td>${val}</td></tr>`);
+      }
+      t.innerHTML = `<tbody>${rows.join("")}</tbody>`;
+    }
+
+    function buildAllocTable(target){
+      const tbody = target.map(r => `
+        <tr>
+          <td><b>${r.ticker}</b></td>
+          <td>${(r.weight*100).toFixed(1)}%</td>
+          <td>${r.score.toFixed(3)}</td>
+          <td>${(r.vol*100).toFixed(1)}%</td>
+        </tr>
+      `).join("");
+      el("allocTable").querySelector("tbody").innerHTML = tbody || `<tr><td colspan="4" class="muted">No targets.</td></tr>`;
+    }
+
+    function buildTradeTable(trades){
+      const tbody = trades.map(t => `
+        <tr>
+          <td><b>${t.action}</b></td>
+          <td>${t.ticker}</td>
+          <td>${t.shares||0}</td>
+          <td>${fmtMoney(t.estValue||0)}</td>
+          <td class="muted">${t.reason||""}</td>
+        </tr>
+      `).join("");
+      el("tradeTable").querySelector("tbody").innerHTML = tbody || `<tr><td colspan="5" class="muted">No trades (likely inside no-trade zone).</td></tr>`;
+    }
+
+    function setChips(universe, defensive){
+      const row = el("chipRow");
+      const chips = [
+        `<span class="chip">Universe: ${universe.length} tickers</span>`,
+        `<span class="chip warn">Defensive: ${defensive.join(", ")}</span>`,
+      ];
+      row.innerHTML = chips.join("");
+    }
+
+    function payload(){
+      const mode = el("universeMode").value;
+      const custom = el("customTickers").value.split(",").map(x=>x.trim()).filter(Boolean);
+      return {
+        universeMode: mode,
+        customTickers: custom,
+        cadence: el("cadence").value,
+        capital: Number(el("capital").value||0),
+        topN: Number(el("topN").value||3),
+        noTradePct: Number(el("noTradePct").value||5),
+        minHoldDays: Number(el("minHoldDays").value||10),
+        targetVol: Number(el("targetVol").value||0.12),
+        slippageBps: Number(el("slippageBps").value||5),
+        minMomentum: Number(el("minMomentum").value||0),
+        seasonalityWeight: Number(el("seasonalityWeight").value||0.05),
+        holdingsCsv: el("holdingsCsv").value
+      };
+    }
+
+    function downloadText(filename, text, mime="application/json"){
+      const blob = new Blob([text], {type:mime});
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    }
+
+    function tradesToCSV(trades){
+      const header = ["action","ticker","shares","price","estValue","reason"];
+      const rows = trades.map(t => header.map(k => {
+        const v = (t[k] ?? "");
+        const s = String(v).replaceAll('"','""');
+        return `"${s}"`;
+      }).join(","));
+      return header.join(",") + "\n" + rows.join("\n");
+    }
+
+    async function run(){
+      try{
+        showOk("Running… fetching EOD data + building plan + computing benchmark. (First run can take ~10–20s.)");
+        const r = await fetch("/api/plan", {
+          method:"POST",
+          headers: {"Content-Type":"application/json"},
+          body: JSON.stringify(payload())
+        });
+        const j = await r.json();
+        if(!r.ok) throw new Error(j.error || "Request failed.");
+
+        state.lastPlan = j;
+
+        el("k_asof").textContent = j.asOf || "—";
+        el("k_next").textContent = j.nextRebalance || "—";
+        el("k_hold").textContent = (j.holdEstimateDays||0) + " days";
+        el("k_regime").textContent = (j.regime?.regime || "—").replaceAll("_"," ");
+
+        setChips(j.universe || [], j.defensiveTickers || []);
+        buildAllocTable(j.target || []);
+        buildTradeTable(j.trades || []);
+
+        // metrics tables
+        const sseM = {
+          totalReturn: j.backtest.metrics.sse.totalReturn,
+          cagr: j.backtest.metrics.sse.cagr,
+          vol: j.backtest.metrics.sse.vol,
+          sharpe: j.backtest.metrics.sse.sharpe,
+          maxDrawdown: j.backtest.metrics.sse.maxDrawdown
+        };
+        const spyM = {
+          totalReturn: j.backtest.metrics.spy.totalReturn,
+          cagr: j.backtest.metrics.spy.cagr,
+          vol: j.backtest.metrics.spy.vol,
+          sharpe: j.backtest.metrics.spy.sharpe,
+          maxDrawdown: j.backtest.metrics.spy.maxDrawdown
+        };
+        setMetrics("mSse", sseM);
+        setMetrics("mSpy", spyM);
+
+        drawChart(j.backtest.daily);
+
+        el("downloadBtn").disabled = false;
+        el("downloadCsvBtn").disabled = false;
+
+        showOk(`Done. As-of ${j.asOf}. Regime: ${(j.regime?.regime||"").replaceAll("_"," ")}. Benchmark years: ${j.backtest.metrics.period.years}.`);
+      }catch(e){
+        showErr(e.message || String(e));
+      }
+    }
+
+    el("runBtn").addEventListener("click", run);
+    el("downloadBtn").addEventListener("click", () => {
+      if(!state.lastPlan) return;
+      downloadText("smta_plan.json", JSON.stringify(state.lastPlan, null, 2), "application/json");
+    });
+    el("downloadCsvBtn").addEventListener("click", () => {
+      if(!state.lastPlan) return;
+      downloadText("smta_trades.csv", tradesToCSV(state.lastPlan.trades || []), "text/csv");
+    });
+
+    el("universeMode").addEventListener("change", () => {
+      const mode = el("universeMode").value;
+      el("customTickersWrap").style.display = (mode === "custom") ? "block" : "none";
+      // A small UX touch: nudge topN defaults
+      if(mode === "stocks") el("topN").value = 5;
+      if(mode === "etf") el("topN").value = 3;
+    });
+
+    health();
+  </script>
+</body>
+</html>
